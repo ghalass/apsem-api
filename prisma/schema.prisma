@@ -25,6 +25,7 @@ model Site {
   // Relations
   engins    Engin[]
   Saisiehrm Saisiehrm[]
+  Objectif  Objectif[]
 }
 
 model Typeparc {
@@ -44,7 +45,8 @@ model Parc {
   typepanneParc        TypepanneParc[]
   lubrifiantParc       LubrifiantParc[]
 
-  Typeparc Typeparc @relation(fields: [typeparcId], references: [id], onDelete: Restrict)
+  Typeparc Typeparc   @relation(fields: [typeparcId], references: [id], onDelete: Restrict)
+  Objectif Objectif[]
 }
 
 model Typeconsommationlub {
@@ -57,8 +59,8 @@ model Typeconsommationlub {
 model TypeconsommationlubParc {
   parcId                Int                 @map("parc_id")
   typeconsommationlubId Int                 @map("typeconsommationlub_id")
-  parc                  Parc                @relation(fields: [parcId], references: [id])
-  typeconsommationlub   Typeconsommationlub @relation(fields: [typeconsommationlubId], references: [id])
+  parc                  Parc                @relation(fields: [parcId], references: [id], onDelete: Restrict)
+  typeconsommationlub   Typeconsommationlub @relation(fields: [typeconsommationlubId], references: [id], onDelete: Restrict)
 
   @@id([parcId, typeconsommationlubId])
   @@map("typeconsommationlub_parc")
@@ -67,8 +69,8 @@ model TypeconsommationlubParc {
 model LubrifiantParc {
   parcId       Int        @map("parc_id")
   lubrifiantId Int        @map("lubrifiant_id")
-  parc         Parc       @relation(fields: [parcId], references: [id])
-  lubrifiant   Lubrifiant @relation(fields: [lubrifiantId], references: [id])
+  parc         Parc       @relation(fields: [parcId], references: [id], onDelete: Restrict)
+  lubrifiant   Lubrifiant @relation(fields: [lubrifiantId], references: [id], onDelete: Restrict)
 
   @@id([parcId, lubrifiantId])
   @@map("lubrifiant_parc")
@@ -101,21 +103,21 @@ model Typepanne {
 model TypepanneParc {
   parcId      Int       @map("parc_id")
   typepanneId Int       @map("typepanne_id")
-  parc        Parc      @relation(fields: [parcId], references: [id])
-  typepanne   Typepanne @relation(fields: [typepanneId], references: [id])
+  parc        Parc      @relation(fields: [parcId], references: [id], onDelete: Restrict)
+  typepanne   Typepanne @relation(fields: [typepanneId], references: [id], onDelete: Restrict)
 
   @@id([parcId, typepanneId])
   @@map("typepanne_parc")
 }
 
 model Panne {
-  id   Int    @id @default(autoincrement())
-  name String @unique
+  id          Int    @id @default(autoincrement())
+  name        String @unique
+  typepanneId Int
 
   // Relations
-  Typepanne   Typepanne   @relation(fields: [typepanneId], references: [id])
-  typepanneId Int
-  Saisiehim   Saisiehim[]
+  Typepanne Typepanne   @relation(fields: [typepanneId], references: [id], onDelete: Restrict)
+  Saisiehim Saisiehim[]
 }
 
 model Saisiehrm {
@@ -182,6 +184,25 @@ model Saisielubrifiant {
   Lubrifiant          Lubrifiant           @relation(fields: [lubrifiantId], references: [id], onDelete: Restrict)
   Saisiehim           Saisiehim            @relation(fields: [saisiehimId], references: [id], onDelete: Restrict)
   Typeconsommationlub Typeconsommationlub? @relation(fields: [typeconsommationlubId], references: [id], onDelete: Restrict)
+}
+
+model Objectif {
+  id          Int    @id @default(autoincrement())
+  annee       Int
+  parcId      Int
+  siteId      Int
+  dispo       Float?
+  mtbf        Float?
+  tdm         Float?
+  spe_huile   Float?
+  spe_go      Float?
+  spe_graisse Float?
+
+  // Relations
+  Parc Parc @relation(fields: [parcId], references: [id], onDelete: Restrict)
+  Site Site @relation(fields: [siteId], references: [id], onDelete: Restrict)
+
+  @@unique([annee, parcId, siteId])
 }
 
 enum UserRoleType {

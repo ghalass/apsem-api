@@ -23,6 +23,7 @@ const saisiehrmRoutes = require('./routes/saisiehrm');
 const rapportsRoutes = require('./routes/rapports');
 const lubrifiantsRoutes = require('./routes/lubrifiants');
 const saisielubrifiantRoutes = require('./routes/saisielubrifiant');
+const objectifsRoutes = require('./routes/objectifs');
 
 // express app
 const app = express()
@@ -61,6 +62,7 @@ app.use('/saisiehrm', saisiehrmRoutes)
 app.use('/rapports', rapportsRoutes)
 app.use('/lubrifiants', lubrifiantsRoutes)
 app.use('/saisielubrifiant', saisielubrifiantRoutes)
+app.use('/objectifs', objectifsRoutes)
 
 // 404 route
 app.all('*', (req, res) => {
