@@ -4,30 +4,24 @@ const prisma = require('../prismaClient')
 
 const getRapportRje = async (req, res) => {
     try {
-        const { du } = req.body;  // Date donnée
-        const dateCible = new Date(du);  // Convertir la date donnée en date JavaScript
-        const debutMois = new Date(dateCible.getFullYear(), dateCible.getMonth(), 1);  // 1er jour du mois
-        const debutAnnee = new Date(dateCible.getFullYear(), 0, 1);  // 1er jour de l'année
+        const { du } = req.body;
+        const dateCible = new Date(du);
+        const debutMois = new Date(dateCible.getFullYear(), dateCible.getMonth(), 1);
+        const debutAnnee = new Date(dateCible.getFullYear(), 0, 1);
 
-        // Période journalière (uniquement le jour donné)
-        const nho_j = 24;  // 24 heures pour le jour donné
-        const finJournee = new Date(dateCible.getTime() + 86400000);  // Fin de la journée (jour suivant)
+        const nho_j = 24;
+        const finJournee = new Date(dateCible.getTime() + 86400000);
+        const nho_m = dateCible.getDate() * 24;
+        const joursEcoules = Math.floor((dateCible - debutAnnee) / 86400000) + 1;
+        const nho_a = joursEcoules * 24;
 
-        // Période mensuelle (du 1er jour du mois jusqu'au jour donné)
-        const nho_m = dateCible.getDate() * 24;  // Nombre d'heures du 1er jour du mois jusqu'à la date donnée
-
-        // Période annuelle (du 1er janvier jusqu'au jour donné)
-        const joursEcoules = Math.floor((dateCible - debutAnnee) / 86400000) + 1;  // Nombre de jours écoulés dans l'année
-        const nho_a = joursEcoules * 24;  // Nombre d'heures écoulées dans l'année
-
-        // Fonction pour obtenir la somme des HIM, HRM et NI pour une période donnée et un engin donné
         const getHimHrmNi = async (enginId, startDate, endDate) => {
             const him = await prisma.saisiehim.aggregate({
                 _sum: { him: true },
                 where: {
                     Saisiehrm: {
-                        du: { gte: startDate, lte: endDate },  // Filtre par période
-                        enginId: enginId,  // Filtre par engin
+                        du: { gte: startDate, lte: endDate },
+                        enginId: enginId,
                     },
                 },
             });
@@ -35,40 +29,37 @@ const getRapportRje = async (req, res) => {
             const hrm = await prisma.saisiehrm.aggregate({
                 _sum: { hrm: true },
                 where: {
-                    du: { gte: startDate, lte: endDate },  // Filtre par période
-                    enginId: enginId,  // Filtre par engin
+                    du: { gte: startDate, lte: endDate },
+                    enginId: enginId,
                 },
             });
 
             const ni = await prisma.saisiehim.count({
                 where: {
                     Saisiehrm: {
-                        du: { gte: startDate, lte: endDate },  // Filtre par période
-                        enginId: enginId,  // Filtre par engin
+                        du: { gte: startDate, lte: endDate },
+                        enginId: enginId,
                     },
                 },
             });
 
             return {
-                him: him._sum.him || 0,  // Somme des HIM pour la période
-                hrm: hrm._sum.hrm || 0,  // Somme des HRM pour la période
-                ni: ni || 0,  // Nombre d'interventions (NI) pour la période
+                him: him._sum.him || 0,
+                hrm: hrm._sum.hrm || 0,
+                ni: ni || 0,
             };
         };
 
-        // Fonction pour calculer les indicateurs (dispo, mtbf, tdm)
         const calculateIndicators = (him, hrm, ni, nho) => {
-            const dispo = ((1 - him / nho) * 100).toFixed(2);  // Disponibilité
-            const mtbf = (hrm / ni).toFixed(2);  // MTBF
-            const tdm = ((100 * hrm) / nho).toFixed(2);  // TDM
-
+            const dispo = ((1 - him / nho) * 100).toFixed(2);
+            const mtbf = ni === 0 ? "0.00" : (hrm / ni).toFixed(2);
+            const tdm = ((100 * hrm) / nho).toFixed(2);
             return { dispo, mtbf, tdm };
         };
 
-        // Récupérer tous les engins => uniquement les engins qui ont une saisie hrm
         const engins = await prisma.engin.findMany({
             where: {
-                Saisiehrm: { some: {} } // Only engines that have at least one Saisiehrm entry
+                Saisiehrm: { some: {} }
             },
             select: {
                 id: true,
@@ -77,24 +68,77 @@ const getRapportRje = async (req, res) => {
             distinct: ['name']
         });
 
-        // Construire le tableau de résultats par engin
         const finalData = await Promise.all(
             engins.map(async (engin) => {
-                // Calcul des sommes pour chaque période
+                const enginDetails = await prisma.engin.findUnique({
+                    where: { id: engin.id },
+                    select: {
+                        parcId: true,
+                        Parc: { select: { name: true } }
+                    }
+                });
+
+                // 🔍 Trouver le site via la saisiehrm du jour
+                const saisieJour = await prisma.saisiehrm.findFirst({
+                    where: {
+                        enginId: engin.id,
+                        du: dateCible
+                    },
+                    select: {
+                        siteId: true,
+                        Site: {
+                            select: {
+                                name: true
+                            }
+                        }
+                    }
+                });
+
+                const siteId = saisieJour?.siteId ?? null;
+                const siteName = saisieJour?.Site?.name ?? null;
+
+                const annee = dateCible.getFullYear();
+
+                const objectif = siteId
+                    ? await prisma.objectif.findUnique({
+                        where: {
+                            annee_parcId_siteId: {
+                                annee,
+                                parcId: enginDetails.parcId,
+                                siteId: siteId
+                            }
+                        },
+                        select: {
+                            dispo: true,
+                            mtbf: true,
+                            tdm: true
+                        }
+                    })
+                    : null;
+
                 const [dataJ, dataM, dataA] = await Promise.all([
-                    getHimHrmNi(engin.id, dateCible, finJournee),  // Période journalière
-                    getHimHrmNi(engin.id, debutMois, dateCible),  // Période mensuelle
-                    getHimHrmNi(engin.id, debutAnnee, dateCible),  // Période annuelle
+                    getHimHrmNi(engin.id, dateCible, finJournee),
+                    getHimHrmNi(engin.id, debutMois, dateCible),
+                    getHimHrmNi(engin.id, debutAnnee, dateCible),
                 ]);
 
-                // Calcul des indicateurs pour chaque période
-                const indicatorsJ = calculateIndicators(dataJ.him, dataJ.hrm, dataJ.ni, nho_j);  // Journalier
-                const indicatorsM = calculateIndicators(dataM.him, dataM.hrm, dataM.ni, nho_m);  // Mensuel
-                const indicatorsA = calculateIndicators(dataA.him, dataA.hrm, dataA.ni, nho_a);  // Annuel
+                const indicatorsJ = calculateIndicators(dataJ.him, dataJ.hrm, dataJ.ni, nho_j);
+                const indicatorsM = calculateIndicators(dataM.him, dataM.hrm, dataM.ni, nho_m);
+                const indicatorsA = calculateIndicators(dataA.him, dataA.hrm, dataA.ni, nho_a);
 
                 return {
                     engin: engin.name,
-                    // Période journalière
+                    parcId: enginDetails.parcId,
+                    parcName: enginDetails.Parc?.name ?? null,
+                    siteId,
+                    siteName,
+                    annee,
+
+                    objectif_dispo: objectif?.dispo ?? null,
+                    objectif_mtbf: objectif?.mtbf ?? null,
+                    objectif_tdm: objectif?.tdm ?? null,
+
+                    // Journalier
                     nho_j,
                     dispo_j: indicatorsJ.dispo,
                     mtbf_j: indicatorsJ.mtbf,
@@ -103,7 +147,7 @@ const getRapportRje = async (req, res) => {
                     hrm_j: dataJ.hrm,
                     ni_j: dataJ.ni,
 
-                    // Période mensuelle
+                    // Mensuel
                     nho_m,
                     dispo_m: indicatorsM.dispo,
                     mtbf_m: indicatorsM.mtbf,
@@ -112,7 +156,7 @@ const getRapportRje = async (req, res) => {
                     hrm_m: dataM.hrm,
                     ni_m: dataM.ni,
 
-                    // Période annuelle
+                    // Annuel
                     nho_a,
                     dispo_a: indicatorsA.dispo,
                     mtbf_a: indicatorsA.mtbf,
@@ -233,32 +277,25 @@ const getRapportUnitePhysique = async (req, res) => {
 
 const getEtatMensuel = async (req, res) => {
     try {
-        const { du } = req.body; // Date de référence
-
-        // Convertir la date en objet Date
+        const { du } = req.body;
         const dateDu = new Date(du);
+        const annee = dateDu.getFullYear();
 
-        // Calculer le premier et le dernier jour du mois
-        const firstDayOfMonth = new Date(dateDu.getFullYear(), dateDu.getMonth(), 1);
-        const lastDayOfMonth = new Date(dateDu.getFullYear(), dateDu.getMonth() + 1, 0);
+        const firstDayOfMonth = new Date(annee, dateDu.getMonth(), 1);
+        const lastDayOfMonth = new Date(annee, dateDu.getMonth() + 1, 0);
+        const firstDayOfYear = new Date(annee, 0, 1);
 
-        // Calculer le premier jour de l'année
-        const firstDayOfYear = new Date(dateDu.getFullYear(), 0, 1);
-
-        // Récupérer tous les parcs avec leurs engins et sites associés
         const parcs = await prisma.parc.findMany({
             include: {
                 engins: {
                     include: {
                         Saisiehrm: {
                             where: {
-                                du: {
-                                    gte: firstDayOfYear, // On prend toutes les saisies depuis le début de l'année
-                                    lte: lastDayOfMonth // Jusqu'à la fin du mois courant
-                                }
+                                du: { gte: firstDayOfYear, lte: lastDayOfMonth }
                             },
                             include: {
-                                Saisiehim: true // Charger les Saisiehim associées
+                                Saisiehim: true,
+                                Site: true
                             }
                         }
                     }
@@ -267,40 +304,32 @@ const getEtatMensuel = async (req, res) => {
             }
         });
 
-        // Fonction pour calculer les indicateurs mensuels et annuels
         const calculateIndicators = (engins, periodStart, periodEnd) => {
-            let nho = 0;
-            let hrm = 0;
-            let him = 0;
-            let ni = 0;
-
+            let nho = 0, hrm = 0, him = 0, ni = 0;
             const enginsAvecSaisieDansPeriode = new Set();
 
             engins.forEach(engin => {
-                if (engin.Saisiehrm && Array.isArray(engin.Saisiehrm)) {
-                    const hasSaisieInPeriod = engin.Saisiehrm.some(saisie =>
-                        saisie.du >= periodStart && saisie.du <= periodEnd
+                if (engin.Saisiehrm) {
+                    const hasSaisieInPeriod = engin.Saisiehrm.some(s =>
+                        s.du >= periodStart && s.du <= periodEnd
                     );
-
                     if (hasSaisieInPeriod) {
-                        enginsAvecSaisieDansPeriode.add(engin.id); // ou engin.uuid si nécessaire
+                        enginsAvecSaisieDansPeriode.add(engin.id);
                     }
 
-                    engin.Saisiehrm.forEach(saisie => {
-                        if (saisie.du >= periodStart && saisie.du <= periodEnd) {
-                            hrm += saisie.hrm;
-                            if (saisie.Saisiehim && Array.isArray(saisie.Saisiehim)) {
-                                saisie.Saisiehim.forEach(saisieHim => {
-                                    him += saisieHim.him;
-                                    ni += saisieHim.ni;
-                                });
-                            }
+                    engin.Saisiehrm.forEach(s => {
+                        if (s.du >= periodStart && s.du <= periodEnd) {
+                            hrm += s.hrm;
+                            s.Saisiehim?.forEach(himEntry => {
+                                him += himEntry.him;
+                                ni += himEntry.ni;
+                            });
                         }
                     });
                 }
             });
 
-            const daysInPeriod = Math.floor((periodEnd - periodStart) / (1000 * 60 * 60 * 24)) + 1;
+            const daysInPeriod = Math.floor((periodEnd - periodStart) / 86400000) + 1;
             nho = enginsAvecSaisieDansPeriode.size * 24 * daysInPeriod;
 
             const hrd = nho - (him + hrm);
@@ -311,63 +340,89 @@ const getEtatMensuel = async (req, res) => {
             const util = (hrm + hrd) > 0 ? (hrm / (hrm + hrd)) * 100 : 0;
 
             return {
-                nho: parseFloat(nho.toFixed(2)),
-                hrm: parseFloat(hrm.toFixed(2)),
-                him: parseFloat(him.toFixed(2)),
-                ni: parseFloat(ni.toFixed(2)),
-                hrd: parseFloat(hrd.toFixed(2)),
-                mttr: parseFloat(mttr.toFixed(2)),
-                dispo: parseFloat(dispo.toFixed(2)),
-                tdm: parseFloat(tdm.toFixed(2)),
-                mtbf: parseFloat(mtbf.toFixed(2)),
-                util: parseFloat(util.toFixed(2)),
+                nho: +nho.toFixed(2),
+                hrm: +hrm.toFixed(2),
+                him: +him.toFixed(2),
+                ni: +ni.toFixed(2),
+                hrd: +hrd.toFixed(2),
+                mttr: +mttr.toFixed(2),
+                dispo: +dispo.toFixed(2),
+                tdm: +tdm.toFixed(2),
+                mtbf: +mtbf.toFixed(2),
+                util: +util.toFixed(2),
             };
         };
 
+        const result = await Promise.all(
+            parcs.map(async parc => {
+                const allEngins = parc.engins;
+                const engins = allEngins?.filter(e => e?.Saisiehrm?.length > 0);
+                const nombre_d_engin = engins.length;
 
-        // Formatage des données
-        const result = parcs.map(parc => {
-            const allEngins = parc.engins;
-            // GARDER QUE LES ENGINS QUI ONT UNE SAISIEHRM
-            const engins = allEngins?.filter(e => e?.Saisiehrm?.length > 0);
-            // console.log(engins);
+                const indicators_m = calculateIndicators(engins, firstDayOfMonth, lastDayOfMonth);
+                const indicators_a = calculateIndicators(engins, firstDayOfYear, lastDayOfMonth);
 
-            const nombre_d_engin = engins.length;
+                // 🔍 Extraire un seul siteId utilisé dans les Saisiehrm du mois
+                let objectif = null;
+                for (const engin of engins) {
+                    for (const saisie of engin.Saisiehrm) {
+                        if (saisie.siteId) {
+                            objectif = await prisma.objectif.findUnique({
+                                where: {
+                                    annee_parcId_siteId: {
+                                        annee,
+                                        parcId: parc.id,
+                                        siteId: saisie.siteId
+                                    }
+                                },
+                                select: {
+                                    dispo: true,
+                                    mtbf: true,
+                                    tdm: true
+                                }
+                            });
+                            if (objectif) break;
+                        }
+                    }
+                    if (objectif) break;
+                }
 
-            // Calcul des indicateurs mensuels
-            const indicators_m = calculateIndicators(engins, firstDayOfMonth, lastDayOfMonth);
+                return {
+                    typeparc: parc.Typeparc.name,
+                    parc: parc.name,
+                    nombre_d_engin,
 
-            // Calcul des indicateurs annuels
-            const indicators_a = calculateIndicators(engins, firstDayOfYear, lastDayOfMonth);
+                    // Indicateurs mensuels
+                    nho_m: indicators_m.nho,
+                    hrm_m: indicators_m.hrm,
+                    him_m: indicators_m.him,
+                    ni_m: indicators_m.ni,
+                    hrd_m: indicators_m.hrd,
+                    mttr_m: indicators_m.mttr,
+                    dispo_m: indicators_m.dispo,
+                    tdm_m: indicators_m.tdm,
+                    mtbf_m: indicators_m.mtbf,
+                    util_m: indicators_m.util,
 
-            return {
-                typeparc: parc.Typeparc.name,
-                parc: parc.name,
-                nombre_d_engin,
-                // Indicateurs mensuels
-                nho_m: indicators_m.nho,
-                hrm_m: indicators_m.hrm,
-                him_m: indicators_m.him,
-                ni_m: indicators_m.ni,
-                hrd_m: indicators_m.hrd,
-                mttr_m: indicators_m.mttr,
-                dispo_m: indicators_m.dispo,
-                tdm_m: indicators_m.tdm,
-                mtbf_m: indicators_m.mtbf,
-                util_m: indicators_m.util,
-                // Indicateurs annuels
-                nho_a: indicators_a.nho,
-                hrm_a: indicators_a.hrm,
-                him_a: indicators_a.him,
-                ni_a: indicators_a.ni,
-                hrd_a: indicators_a.hrd,
-                mttr_a: indicators_a.mttr,
-                dispo_a: indicators_a.dispo,
-                tdm_a: indicators_a.tdm,
-                mtbf_a: indicators_a.mtbf,
-                util_a: indicators_a.util,
-            };
-        });
+                    // Indicateurs annuels
+                    nho_a: indicators_a.nho,
+                    hrm_a: indicators_a.hrm,
+                    him_a: indicators_a.him,
+                    ni_a: indicators_a.ni,
+                    hrd_a: indicators_a.hrd,
+                    mttr_a: indicators_a.mttr,
+                    dispo_a: indicators_a.dispo,
+                    tdm_a: indicators_a.tdm,
+                    mtbf_a: indicators_a.mtbf,
+                    util_a: indicators_a.util,
+
+                    // ✅ Objectifs ajoutés à plat
+                    objectif_dispo: objectif?.dispo ?? null,
+                    objectif_mtbf: objectif?.mtbf ?? null,
+                    objectif_tdm: objectif?.tdm ?? null,
+                };
+            })
+        );
 
         return res.json(result);
     } catch (error) {
@@ -528,7 +583,6 @@ const getIndispoParParc = async (req, res) => {
         return res.status(500).json({ message: "Erreur serveur" });
     }
 };
-
 
 const getHeuresChassis = async (req, res) => {
     try {
