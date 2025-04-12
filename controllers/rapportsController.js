@@ -961,6 +961,19 @@ const getParetoMtbfParc = async (req, res) => {
             return res.status(404).json({ error: "Parc non trouvé" });
         }
 
+        // Récupérer l'objectif MTBF pour le parc et l'année
+        const objectif = await prisma.objectif.findFirst({
+            where: {
+                AND: [
+                    { annee: year },
+                    { parcId: parseInt(parcId) }
+                ]
+            },
+            select: {
+                mtbf: true
+            }
+        });
+
         // Noms des mois en français
         const monthNames = [
             "janvier", "février", "mars", "avril", "mai", "juin",
@@ -1018,7 +1031,8 @@ const getParetoMtbfParc = async (req, res) => {
             results[month] = {
                 ...results[month],
                 mtbf: mtbf,
-                engins_actifs: activeEnginIds.length
+                engins_actifs: activeEnginIds.length,
+                objectif_mtbf: objectif?.mtbf ?? null // Ajout de l'objectif mtbf
             };
         }
 
@@ -1032,6 +1046,7 @@ const getParetoMtbfParc = async (req, res) => {
         });
     }
 };
+
 
 const getAnalyseSpcPeriodParcTypeConsomm = async (req, res) => {
     try {
