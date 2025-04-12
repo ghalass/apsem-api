@@ -38,11 +38,12 @@ const getObjectif = async (req, res) => {
 
 // create new objectif
 const createObjectif = async (req, res) => {
-    const { name } = req.body
-
+    const { annee, parcId, siteId, dispo, mtbf, tdm, spe_huile, spe_go, spe_graisse } = req.body
     let emptyFields = [];
 
-    if (!name) emptyFields.push('name')
+    if (!annee) emptyFields.push('annee')
+    if (!parcId) emptyFields.push('parcId')
+    if (!siteId) emptyFields.push('siteId')
 
     if (emptyFields.length > 0) {
         return res.status(400).json({ error: 'Veuillez remplir tout les champs!', emptyFields })
@@ -50,7 +51,7 @@ const createObjectif = async (req, res) => {
 
     try {
         const exists = await prisma.objectif.findFirst({
-            where: { name: name }
+            where: { annee: parseInt(annee), parcId: parseInt(parcId), siteId: parseInt(siteId) }
         });
 
         if (exists) {
@@ -58,7 +59,11 @@ const createObjectif = async (req, res) => {
         }
 
         const objectif = await prisma.objectif.create({
-            data: { name }
+            data: {
+                annee: parseInt(annee), parcId: parseInt(parcId), siteId: parseInt(siteId),
+                dispo: parseFloat(dispo), mtbf: parseFloat(mtbf), tdm: parseFloat(tdm),
+                spe_huile: parseFloat(spe_huile), spe_go: parseFloat(spe_go), spe_graisse: parseFloat(spe_graisse),
+            }
         })
         res.status(201).json(objectif)
     } catch (error) {
@@ -96,7 +101,7 @@ const deleteObjectif = async (req, res) => {
 // update a objectif
 const updateObjectif = async (req, res) => {
     const { id } = req.params
-    const { name } = req.body
+    const { annee, parcId, siteId, dispo, mtbf, tdm, spe_huile, spe_go, spe_graisse } = req.body
     try {
 
         if (isNaN(id) || parseInt(id) != id) {
@@ -109,7 +114,7 @@ const updateObjectif = async (req, res) => {
 
         // check if name not already exist
         const nameExist = await prisma.objectif.findFirst({
-            where: { name: name, id: { not: parseInt(id) } },
+            where: { id: { not: parseInt(id) }, annee: parseInt(annee), parcId: parseInt(parcId), siteId: parseInt(siteId) }
 
         });
         if (nameExist) {
@@ -122,7 +127,11 @@ const updateObjectif = async (req, res) => {
 
         const updatedWorkout = await prisma.objectif.update({
             where: { id: parseInt(id) },
-            data: { name }
+            data: {
+                annee: parseInt(annee), parcId: parseInt(parcId), siteId: parseInt(siteId),
+                dispo: parseFloat(dispo), mtbf: parseFloat(mtbf), tdm: parseFloat(tdm),
+                spe_huile: parseFloat(spe_huile), spe_go: parseFloat(spe_go), spe_graisse: parseFloat(spe_graisse),
+            }
         });
 
         res.status(200).json(updatedWorkout)
