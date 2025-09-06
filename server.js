@@ -83,7 +83,6 @@ prisma
         // listen for requests
         app.listen(PORT, () => {
             console.log(`Connected to DB & listening on port ${PORT}`);
-            console.log(`http://localhost:${PORT}/`);
         })
     })
     .catch((error) => {
