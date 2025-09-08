@@ -364,6 +364,133 @@ const getSaisieHrmDay = async (req, res) => {
     }
 };
 
+// 
+const injectSaisieHrm = async (req, res) => {
+    try {
+        let saisieInputs = { du: null, enginId: null, siteId: null, hrm: null }
+
+        if (req.body?.DATE_RJE === undefined) return res.status(200).json({ message: `NOK : Colonne DATE_RJE introuvable.` })
+        if (req.body?.ENGIN === undefined) return res.status(200).json({ message: `NOK : Colonne ENGIN introuvable.` })
+        if (req.body?.SITE === undefined) return res.status(200).json({ message: `NOK : Colonne SITE introuvable.` })
+        if (req.body?.HRM === undefined) return res.status(200).json({ message: `NOK : Colonne HRM introuvable.` })
+
+        const engin = await prisma.engin.findFirst({ where: { name: req.body?.ENGIN } });
+        const site = await prisma.site.findFirst({ where: { name: req.body?.SITE } });
+
+        saisieInputs.du = req.body?.DATE_RJE || null;
+        saisieInputs.enginId = engin?.id || null;
+        saisieInputs.siteId = site?.id || null;
+        saisieInputs.hrm = req.body?.HRM || null;
+
+        const missingFields = ["du", "enginId", "siteId", "hrm"].filter((field) => !saisieInputs[field]);
+        if (missingFields.length > 0) {
+            return res.status(200).json({ message: `${req.body?.ENGIN} NOK : Veuillez remplir tous les champs!.` })
+        }
+
+        if (isNaN(saisieInputs.hrm) || saisieInputs.hrm > 24 || saisieInputs.hrm < 0) return res.json({ message: `${req.body?.ENGIN} NOK : HRM ne doit pas depasser 24h` });
+        exist = await prisma.saisiehrm.findFirst({ where: { du: new Date(saisieInputs.du), enginId: parseInt(saisieInputs.enginId) } });
+        if (exist) return res.status(200).json({ message: `${req.body?.ENGIN} NOK : Saisie déjà faite pour cet engin à cette date!` });
+
+        await prisma.saisiehrm.create({
+            data: { du: new Date(saisieInputs.du), enginId: parseInt(saisieInputs.enginId), siteId: parseInt(saisieInputs.siteId), hrm: parseFloat(saisieInputs.hrm) }
+        })
+
+        return res.status(200).json({ message: `${req.body?.ENGIN} OK : Saisie faite` })
+    } catch (error) {
+        console.log(error);
+    }
+}
+const injectSaisieHim = async (req, res) => {
+    try {
+        let saisieInputs = { panneId: null, him: null, ni: null, saisiehrmId: null }
+
+        if (req.body?.DATE_RJE === undefined) return res.status(200).json({ message: `NOK : Colonne DATE_RJE introuvable.` })
+        if (req.body?.ENGIN === undefined) return res.status(200).json({ message: `NOK : Colonne ENGIN introuvable.` })
+        if (req.body?.PANNE === undefined) return res.status(200).json({ message: `NOK : Colonne PANNE introuvable.` })
+        if (req.body?.HIM === undefined) return res.status(200).json({ message: `NOK : Colonne HIM introuvable.` })
+        if (req.body?.NI === undefined) return res.status(200).json({ message: `NOK : Colonne NI introuvable.` })
+
+        const engin = await prisma.engin.findUnique({ where: { name: req.body?.ENGIN } });
+        if (!engin) return res.status(200).json({ message: `${req.body?.ENGIN} NOK : Engin introuvable!.` })
+
+        const panne = await prisma.panne.findFirst({
+            where: {
+                name: req.body?.PANNE,
+                Typepanne: {
+                    TypepanneParc: {
+                        some: {
+                            parcId: engin.parcId
+                        }
+                    }
+                }
+            },
+            select: { id: true }
+        });
+        if (!panne) return res.status(200).json({ message: `${engin?.name}->${req.body?.PANNE}-> NOK : Code Panne introuvable!.` });
+
+        const saisieHrm = await prisma.saisiehrm.findUnique(
+            { where: { du: new Date(req.body?.DATE_RJE), enginId: parseInt(engin?.id) } }
+        );
+        if (!saisieHrm) return res.status(200).json({ message: `${req.body?.ENGIN}-> NOK : Aucune HRM saisie!.` })
+
+        saisieInputs.panneId = panne?.id || null;
+        saisieInputs.him = req.body?.HIM || null;
+        saisieInputs.ni = req.body?.NI || null;
+        saisieInputs.saisiehrmId = saisieHrm?.hrm || null;
+
+        const missingFields = ["panneId", "him", "ni", "saisiehrmId"].filter((field) => !saisieInputs[field]);
+        if (missingFields.length > 0) {
+            return res.status(200).json({ message: `${req.body?.ENGIN}-> NOK : Veuillez remplir tous les champs!.` })
+        }
+
+        return res.status(200).json({ message: `${engin?.name}->${req.body?.PANNE}-> OK : Saisie faite` })
+        /*** */
+        const { panneId, him, ni, saisiehrmId } = req.body
+        // // Vérification des champs obligatoires
+        // const missingFields = ["panneId", "him", "ni", "saisiehrmId"].filter((field) => !req.body[field]);
+        // if (missingFields.length > 0) {
+        //     return res
+        //         .status(400)
+        //         .json({ error: "Veuillez remplir tous les champs!", missingFields });
+        // }
+        // check if panneId exist
+        panneExist = await prisma.panne.findFirst({
+            where: { id: parseInt(panneId) }
+        });
+        if (!panneExist) return res.status(400).json({ error: "Panne n'existe pas", panneId });
+
+        // check if already exist
+        exist = await prisma.saisiehim.findFirst({
+            where: { panneId: parseInt(panneId), saisiehrmId: parseInt(saisiehrmId) }
+        });
+        if (exist) return res.status(400).json({ error: "Saisie déjà faite pour cet engin à cette date!", exist });
+
+        // CHECK TOTAL HRM & HIM
+        const totlaHRM = await prisma.saisiehrm.aggregate({
+            _sum: { hrm: true },
+            where: { id: parseInt(saisiehrmId) },
+        });
+        const totlaHIM = await prisma.saisiehim.aggregate({
+            _sum: { him: true },
+            where: { saisiehrmId: parseInt(saisiehrmId) },
+        });
+        const him_hrm_saisie = totlaHRM._sum.hrm + totlaHIM._sum.him + Number(him)
+        let message = `HRM saisie = ${totlaHRM._sum.hrm || 0}\n`;
+        message += `HIM saisie = ${totlaHIM._sum.him || 0}\n`;
+        message += `Nouveau HIM = ${him || 0}\n`;
+        message += `Total sera = ${him_hrm_saisie} > 24h\n`;
+        message += `** IMPOSSIBLE de dépasser 24h **`;
+        if (him_hrm_saisie > 24) return res.status(400).json({ error: message });
+
+        const savedSaisie = await prisma.saisiehim.create({
+            data: { panneId: parseInt(panneId), him: parseFloat(him), ni: parseInt(ni), saisiehrmId: parseInt(saisiehrmId) }
+        })
+        return res.status(201).json(savedSaisie)
+    } catch (error) {
+        console.log(error);
+    }
+}
+
 module.exports = {
     get_byengin_and_date,
 
@@ -378,4 +505,7 @@ module.exports = {
     getSaisieHrm,
 
     getSaisieHrmDay,
+
+    injectSaisieHrm,
+    injectSaisieHim,
 }

@@ -14,6 +14,9 @@ const {
     getSaisieHrm,
     getSaisieHrmDay,
 
+    injectSaisieHrm,
+    injectSaisieHim,
+
 }
     = require('../controllers/saisiehrmController')
 
@@ -27,9 +30,12 @@ router.use(requireAuth)
 
 router.post('/getSaisieHrm', getSaisieHrm)
 router.post('/createSaisieHrm', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), createSaisieHrm)
+router.post('/injectSaisieHrm', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), injectSaisieHrm)
 router.patch('/updateSaisieHrm', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), updateSaisieHrm)
 
 router.post('/createSaisieHim', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), createSaisieHim)
+router.post('/injectSaisieHim', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), injectSaisieHim)
+
 router.delete('/deleteSaisieHim', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), deleteSaisieHim)
 router.patch('/updateSaisieHim', allowedRoles(['SUPER_ADMIN', 'ADMIN', 'AGENT_SAISIE']), updateSaisieHim)
 router.post('/getSaisieHrmDay', getSaisieHrmDay)
